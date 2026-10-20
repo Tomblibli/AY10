@@ -1,0 +1,87 @@
+\documentclass[heading=true]{ctexart}
+\usepackage{graphicx} % Required for inserting images
+% ============================================================
+%  基于强化学习的交通信号控制 —— 开题报告「方案设计」部分
+%
+%  【编译方式】Overleaf 中请将 Compiler 设为 XeLaTeX
+%              （使用 ctex 中文支持，pdfLaTeX 会报错）
+%
+%  【篇幅】正文约 1 页。整份开题报告上限 2 页，
+%          余下篇幅留给研究背景与相关工作部分。
+%
+%  【合并到组内模板时】
+%    1) 删除 \documentclass ... \begin{document} 之间的导言区；
+%    2) 保留 \section{...} 起的正文，按模板调整编号（可改为 \section*）；
+%    3) 模板需已加载 ctex、amsmath、booktabs、enumitem。
+% ============================================================
+
+\usepackage[margin=1.9cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\titleformat{\section}{\normalfont\large\bfseries\raggedright}{\thesection}{1em}{}
+
+% 压缩行距与标题间距，以控制篇幅
+% \linespread{1.10}
+% \titlespacing*{\section}{0pt}{4pt plus 1pt minus 1pt}{2pt}
+% \setlist[itemize]{noitemsep,topsep=1pt,leftmargin=1.4em,label=--}
+
+% \pagestyle{plain}
+
+\begin{document}
+
+\title{基于强化学习的交通信号控制：方案设计}
+\maketitle
+
+\section{项目目标}
+本项目以单路口信号控制为对象，训练智能体依据实时交通状态自适应地选择信号相位，并与固定时长、基于队列两类经典控制器进行可复现的对比，分析学习型控制相对规则型控制的收益及其来源。
+% 技术路线为：SUMO 仿真环境 $\rightarrow$ 表格型 Q-learning $\rightarrow$ DQN 扩展 $\rightarrow$ 多场景统一评估。
+
+\section{环境选择}
+
+采用 SUMO 结合 SUMO-RL 构建仿真环境。SUMO 原生支持车辆跟驰、排队形成与信号控制，可避免自建排队模型时对服务率等作出过度简化；SUMO-RL 将仿真封装为 Gymnasium 环境并提供单路口路网，使环境、智能体与基线解耦实现、共享同一套评价代码。该方案更接近真实交通，代价是环境配置成本较高、仿真较慢，训练时可关闭图形界面并以 libsumo 加速。
+
+路口设为单十字路口，四个进口方向各设左转、直行、右转三条车道；信号采用四相位方案（南北直行、南北左转、东西直行、东西左转），其中左转为保护式左转，即对向直行显示红灯。该设置可刻画左转与对向直行的冲突，较两相位更真实，但会增大状态与动作空间，对表格法构成挑战，此权衡亦作为分析内容。车辆按各方向独立的泊松过程到达，转向比例由路由文件给定，每个回合仿真一小时。智能体按固定间隔决策，切换相位时插入黄灯过渡；动作为选择下一个绿灯相位，观测包括当前相位、最小绿灯标志以及各车道的车辆数与排队长度。
+
+\section{算法与模型设计}
+
+将控制问题形式化为马尔可夫决策过程：状态由观测离散化得到，包含当前相位、最小绿灯标志与各车道排队长度及车辆数的分箱；动作为选择下一个绿灯相位；奖励主用相邻决策间全局累计等待时间的减少量，并与队列惩罚（各车道排队数之和的负值）作对比；折扣因子取 $0.95$。前者直接对应优化目标，后者更强调抑制长队列，两者对比可反映奖励设计对所学策略的影响。
+
+表格型 Q-learning 以 $\varepsilon$-greedy 策略探索，按下式更新动作价值，$\varepsilon$ 由 $1.0$ 逐步衰减至 $0.05$：
+\begin{equation}
+Q(s,a)\leftarrow Q(s,a)+\alpha\Bigl[\,r+\gamma\max_{a'}Q(s',a')-Q(s,a)\Bigr]
+\end{equation}
+表格法无须神经网络、可解释且稳定，但需人工离散化，四相位三车道下状态空间较大、收敛较慢。为此进一步实现 DQN：以连续观测为输入，用神经网络逼近动作价值，并配合经验回放与目标网络，以规避手工离散化与状态爆炸。路线分两阶段：先完成表格法获得可解释结果，再以 DQN 对照，比较性能、收敛速度与泛化能力。
+
+\section{Baseline}
+\begin{itemize}
+    \item \textbf{固定时长控制:}按固定周期与绿信比循环切换相位，不感知实时交通状态，代表“无自适应”的下界
+    \item \textbf{基于队列控制:}在每个决策点统计各相位对应车道的排队总和，优先放行排队更长的相位并服从最小绿灯约束，代表“无学习的自适应”控制
+\end{itemize}
+
+\section{评估}
+
+评估按由易到难的次序组织为四个阶梯，先在第一级跑通完整流程并确认指标合理，再逐级加压，且每次只改变一个变量以便归因。
+
+\begin{center}\small
+表 1\quad 评估场景设置\\[2pt]
+\begin{tabular}{@{}llll@{}}
+  \toprule
+  阶梯 & 交通条件 & 总需求（veh/h） & 方向比 \\
+  \midrule
+  S1 & 低流量、方向均衡 & 600  & 1:1:1:1 \\
+  S2 & 中流量、方向均衡 & 1200 & 1:1:1:1 \\
+  S3 & 高流量、方向均衡 & 2000 & 1:1:1:1 \\
+  S4 & 中流量、方向不均衡 & 1200 & 3:1:1:1 \\
+  \bottomrule
+\end{tabular}
+\end{center}
+\begin{itemize}
+    \item \textbf{主指标：}平均等待时间、平均队列长度
+    \item \textbf{其他指标：}最大队列长度、吞吐量、平均延误、相位切换次数
+\end{itemize}
+主指标为平均等待时间与平均队列长度，辅以最大队列长度、吞吐量、平均延误与相位切换次数；强化学习部分另报告学习曲线与收敛速度。训练与测试分离，每个“控制器—场景”组合使用多个随机种子并报告均值与标准差。据此分析：强化学习是否优于两类基线及其优势场景、四相位下能否学到合理策略、表格法与 DQN 的差异，以及奖励设计对控制行为的影响。
+
+\end{document}

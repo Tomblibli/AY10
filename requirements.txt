@@ -1,0 +1,58 @@
+# ============================================================
+# Project dependencies (pinned for a shared, reproducible env)
+# Python: 3.11
+# Install: pip install -r requirements.txt
+# ============================================================
+#
+# NOTE: keep this file ASCII-only.
+# pip decodes requirements files with the system locale on Windows;
+# non-ASCII comments break installs under a Chinese (GBK) locale.
+#
+# Why these versions
+# ------------------
+# 1) sumo-rl 1.4.5 (May 2024) is the latest release. It declares
+#    gymnasium>=0.26 and pettingzoo>=1.22.2 with no upper bound,
+#    but gymnasium 1.x is not from the same era and may break it.
+#    gymnasium 0.29.1 + pettingzoo 1.24.3 are contemporary with
+#    sumo-rl 1.4.5 and known to work together.
+# 2) numpy 1.26.4 is the last stable 1.x release, matching the
+#    test matrix of gymnasium/pandas/matplotlib of that period.
+#    (numpy 2.x is intentionally avoided.)
+# 3) traci / sumolib version numbers mirror the SUMO release:
+#        SUMO 1.28.0  <->  traci 1.28.0 / sumolib 1.28.0
+#    If you install a different SUMO, change these two lines to
+#    match it (e.g. SUMO 1.26.0 -> traci==1.26.0, sumolib==1.26.0).
+# 4) All pins exist on PyPI and ship cp311 wheels (no local build).
+# ============================================================
+
+# ---- RL environment / agent core ----
+sumo-rl==1.4.5
+gymnasium==0.29.1
+pettingzoo==1.24.3
+
+# ---- numerics / data / plotting ----
+numpy==1.26.4
+pandas==2.2.3
+matplotlib==3.9.2
+pillow==10.4.0
+
+# ---- SUMO python API (must match the installed SUMO release) ----
+traci==1.28.0
+sumolib==1.28.0
+
+# ============================================================
+# Tier 2: enable later for the DQN stage (installs PyTorch).
+# Compatible with gymnasium==0.29.1 above:
+#   stable-baselines3 2.3.2 requires gymnasium>=0.28.1,<0.30
+# Do NOT use [extra]: it pulls opencv/pygame/autorom which this
+# project does not need.
+# ============================================================
+# stable-baselines3==2.3.2
+
+# ============================================================
+# After the environment is verified, generate and commit the
+# full lock file so the whole team can reproduce it exactly:
+#     pip freeze > requirements-lock.txt
+# The lock file captures all transitive deps (cloudpickle,
+# contourpy, kiwisolver, ...) with exact versions.
+# ============================================================

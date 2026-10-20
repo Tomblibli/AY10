@@ -1,0 +1,40 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ---- 虚拟环境 ----
+.venv/
+venv/
+env/
+
+# ---- 实验结果与图表（可再生，不入库）----
+results/*.csv
+results/*.json
+report/*.pdf
+report/*.png
+
+# ---- LaTeX 编译产物 ----
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
+*.bbl
+*.blg
+
+# ---- SUMO 运行产物 ----
+*.xml.bak
+*.sumocfg.bak
+sumo_log.txt
+logfile.txt
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
