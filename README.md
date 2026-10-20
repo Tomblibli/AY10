@@ -2,6 +2,8 @@
 
 本项目为小组作业 **AY10：基于强化学习的交通信号控制**。技术路线与实验设计见 `plan.md`，开题报告的方案部分见 `proposal/`。
 
+**技术路线分两个阶段**：阶段一用**表格型 Q-learning** 跑通全流程并产出完整对比结果；阶段二在此基础上扩展 **DQN**，与表格法对照。
+
 图例：✅ 已存在　🚧 计划中（尚未创建）
 
 ```
@@ -12,17 +14,23 @@ AY10/
 ├── proposal/                       # 开题报告（LaTeX 源文件与 PDF）             ✅
 │   ├── proposal.tex                #   方案部分正文（XeLaTeX 编译）
 │   └── proposal.pdf                #   编译产物
-├── scripts/ 
-│   ├── check_env.py                # 检查配置环境
-│   └── demo_fixed_time.py          # 检查仿真环境
-├── requirements.txt                # Python 依赖清单                          🚧
+├── scripts/                        # 辅助脚本                                   ✅
+│   ├── check_env.py                #   环境自检（SUMO / 依赖 / 仿真试跑）
+│   └── demo_fixed_time.py          #   固定时长控制的 sumo-gui 动画演示
+├── requirements.txt                # Python 依赖清单（已固定版本）               ✅
+├── pytest.ini                      # pytest 配置（含 integration 标记）         ✅
+├── CONTRIBUTING.md                 # 协作规范：分支 / 提交 / PR 流程             ✅
+├── .gitignore                      # 排除虚拟环境 / 缓存 / 实验产物             ✅
 ├── nets/                           # SUMO 路网、需求与信号配时                   🚧
 │   └── single-intersection/
-│       ├── single-intersection.net.xml   # 路网：单路口，4 相位、每方向 3 车道
-│       ├── single-intersection.rou.xml   # 需求：各方向泊松到达 + 转向比例
-│       ├── tls.add.xml                   # 信号程序：4 绿灯相位 + 黄灯过渡
-│       └── single-intersection.sumocfg   # 仿真运行配置
-├── src/                            # 源代码                                   🚧
+│       ├── README.md                     # 本目录说明与路网生成步骤              ✅
+│       ├── single-intersection.net.xml   # 路网：单路口，4 相位、每方向 3 车道    🚧
+│       ├── single-intersection.rou.xml   # 需求：各方向泊松到达 + 转向比例        🚧
+│       ├── tls.add.xml                   # 信号程序：4 绿灯相位 + 黄灯过渡        🚧
+│       └── single-intersection.sumocfg   # 仿真运行配置                          🚧
+├── src/                            # 源代码                                   ✅
+│   ├── config.py                   #   配置加载（默认值 + JSON 覆盖）
+│   ├── factory.py                  #   控制器工厂（train/evaluate 共用）
 │   ├── env/
 │   │   ├── sumo_env.py             #   封装 SumoEnvironment、场景与随机种子
 │   │   └── scenarios.py            #   场景 S1–S4（由易到难）
@@ -37,11 +45,31 @@ AY10/
 │   ├── metrics.py                  #   等待时间、队列长度、吞吐量等指标
 │   ├── train.py                    #   训练入口
 │   └── evaluate.py                 #   评估入口（控制器 × 场景 × 种子）
-├── experiments/
-│   └── configs/                    # 场景与超参数配置                          🚧
-├── results/                        # 实验输出 CSV                              🚧
-└── report/                         # 图表与最终报告                            🚧
+├── experiments/                    # 实验配置                                   ✅
+│   └── configs/                    # 场景与超参数配置（JSON）                   ✅
+│       └── sample.json             #   示例配置（可直接 --config sample.json）
+├── tests/                          # pytest 单元测试（不依赖 SUMO）              ✅
+│   ├── conftest.py
+│   ├── test_discretizer.py         #   观测离散化
+│   ├── test_q_learning.py          #   表格 Q-learning
+│   ├── test_controllers.py         #   固定时长 / LQF 基线
+│   ├── test_metrics.py             #   指标汇总与 CSV 读取
+│   ├── test_scenarios_config.py    #   场景与配置
+│   ├── test_env_compat.py          #   环境接口兼容层
+│   └── test_integration_sumo.py    #   集成测试（需 SUMO，默认跳过）
+├── docs/                           # 文档                                       ✅
+│   └── tasks.md                    # 任务分工（阶段一 / 阶段二）                 ✅
+├── .github/                        # CI 配置                                    ✅
+│   └── workflows/ci.yml            # GitHub Actions：提交即跑测试               ✅
+├── results/                        # 实验输出 CSV（不入库）                     ✅
+│   └── README.md                   #   目录用途说明
+└── report/                         # 图表与最终报告（内容待填）                 🚧
+    └── README.md                   #   目录用途说明
 ```
+
+> 说明：图中省略了各包的 `__init__.py`（`src/__init__.py`、`src/env/__init__.py`、
+> `src/agents/__init__.py`、`src/controllers/__init__.py`）以及 `proposal/` 下的
+> LaTeX 中间产物（`.aux`、`.log`、`.fls`、`.fdb_latexmk`、`.synctex.gz`，已由 `.gitignore` 排除）。
 
 **数据流**：`nets/`（路网与需求）→ `src/env/`（封装为 Gymnasium 环境）→ `src/agents/`＋`src/controllers/`（各控制器）→ `src/train.py` / `src/evaluate.py` → `results/`（CSV）→ `report/`（图表与报告）。
 
@@ -97,7 +125,7 @@ pip install -r .\requirements.txt
 
 `sumo-rl` 会自动带入 `gymnasium`、`pettingzoo`、`traci`、`sumolib`、`pillow`。
 
-进入 DQN 阶段后再安装：
+**阶段二（DQN）开始前**再安装：
 
 ```bash
 pip install "stable-baselines3[extra]>=2.0"
@@ -113,7 +141,18 @@ python scripts/demo_fixed_time.py #检查仿真sumo是否正常运行
 
 若第二条报 `SUMO_HOME` 相关错误，请回到第 3 步检查环境变量，并确认已重开终端。
 
-## 5. 常用补充
+## 5. 开发与测试
+
+平时只需要一条命令：
+
+```bash
+python -m pytest        # 57 个用例，约 3 秒，不需要 SUMO
+```
+
+- 大家一起怎么干活（fork、提交、口头汇报）：见 `CONTRIBUTING.md`
+- 谁负责哪块：见 `docs/tasks.md`
+
+## 6. 常用补充
 
 **训练加速（可选）**：使用 libsumo 替代 TraCI，约 8 倍加速，但此时**不能**使用 `sumo-gui`，也不能并行跑多个仿真。
 
@@ -127,12 +166,16 @@ export LIBSUMO_AS_TRACI=1   # Linux / macOS
 
 建议：训练时开启，调参与演示时关闭。
 
-**可视化检查路网/信号**：
+**动画演示（固定时长控制）**：
 
 ```bash
-sumo-gui -c nets/single-intersection/single-intersection.sumocfg
+python scripts/demo_fixed_time.py                 # sumo-gui，600 仿真秒 ≈ 30 秒动画
+python scripts/demo_fixed_time.py --duration 300 --delay 100
+python scripts/demo_fixed_time.py --no-gui        # 无窗口自检
 ```
 
+> 目前会回退到 SUMO-RL 内置路网（2 相位：`GGrr` 42s → 黄 2s → `rrGG` 42s → 黄 2s，周期 88s）。
+> `nets/single-intersection/` 还没有自定义路网，所以**不能**直接 `sumo-gui -c ...sumocfg`。
 
 ---
 

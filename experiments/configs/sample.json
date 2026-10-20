@@ -1,5 +1,5 @@
 {
-  "_comment": "示例配置：对照 plan.md / README 中的实验设置。当前代码读取常量与命令行参数，本文件作为参数留档。",
+  "_comment": "示例配置。用法：python src/train.py --config sample.json  或  python src/evaluate.py --config sample.json",
   "scenario": "S1",
   "controller": "qlearning",
   "reward_fn": "diff-waiting-time",
@@ -22,7 +22,11 @@
     "epsilon_decay": 0.995
   },
   "discretizer": {
-    "queue_edges": [1, 3, 6, 10],
-    "density_edges": [1, 3, 6, 10]
+    "queue_edges": [0.1, 0.3, 0.6, 0.9],
+    "density_edges": [0.1, 0.3, 0.6, 0.9]
+  },
+  "fixed_time": {
+    "switch_every": 6
   }
 }
+

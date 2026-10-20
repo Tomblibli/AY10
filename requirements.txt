@@ -35,13 +35,14 @@ numpy==1.26.4
 pandas==2.2.3
 matplotlib==3.9.2
 pillow==10.4.0
+pytest==7.4.4
 
 # ---- SUMO python API (must match the installed SUMO release) ----
 traci==1.28.0
 sumolib==1.28.0
 
 # ============================================================
-# Tier 2: enable later for the DQN stage (installs PyTorch).
+# Stage 2 (DQN): enable later for the second stage (installs PyTorch).
 # Compatible with gymnasium==0.29.1 above:
 #   stable-baselines3 2.3.2 requires gymnasium>=0.28.1,<0.30
 # Do NOT use [extra]: it pulls opencv/pygame/autorom which this

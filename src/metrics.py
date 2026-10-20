@@ -1,109 +1,180 @@
-"""指标计算（框架版）。
-
-评估指标（详见 plan.md §6.2）
------------------------------
-主指标：
-    * ``avg_wait``  —— 平均等待时间（s/veh）
-    * ``avg_queue`` —— 平均队列长度（veh）
-辅助指标：
-    * ``max_queue`` —— 最大队列长度
-    * ``throughput``—— 吞吐量（veh/h）
-    * ``avg_time_loss`` —— 平均延误（s/veh）
-    * ``switch_count``  —— 相位切换次数
+"""指标计算与读取。
 
 数据来源
 --------
-SUMO-RL 在构造环境时若指定 ``out_csv_name``，每个 episode 结束后会写出 CSV
-（由 ``env.save_csv(...)`` 触发），其中包含逐步的等待时间、排队等统计量。
-正式评估应从中读取；当前版本先提供纯函数的汇总工具，读取逻辑待接入。
+SUMO-RL 在 ``SumoEnvironment(..., out_csv_name="results/xxx")`` 时会写出
+``results/xxx_conn0_ep0.csv``，每行一个决策步。经实测，其列名为::
 
-.. note:.
-   ``waiting_times`` / ``queue_lengths`` 目前由调用方提供，
-   待确认 SUMO-RL CSV 的具体列名后再补充 ``load_episode_from_csv``。
+    step, system_total_stopped, system_total_waiting_time,
+    system_mean_waiting_time, system_mean_speed,
+    t_stopped, t_accumulated_waiting_time, t_average_speed,
+    agents_total_stopped, agents_total_accumulated_waiting_time
+
+指标映射（与 plan.md §6.2 对应）
+--------------------------------
+* ``avg_wait``  ← ``system_mean_waiting_time`` 的均值（逐步平均等待时间）
+* ``avg_queue`` ← ``system_total_stopped`` 的均值（**停车数作为排队长度代理**）
+* ``max_queue`` ← ``system_total_stopped`` 的最大值
+* ``p95_wait``  ← ``system_mean_waiting_time`` 的 95 分位
+* ``total_wait``← ``t_accumulated_waiting_time`` 的最大值（累计等待时间）
+* ``mean_speed``← ``t_average_speed`` 的均值
+* ``duration``  ← ``step`` 的最大值（仿真时长，秒）
+* ``n_samples`` ← 行数
+
+.. note::
+   ``system_total_stopped`` 是"速度低于阈值的车辆数"，是**排队长度**的近似；
+   若后续需要精确排队数，应改为从 TraCI 直接读取各进口车道的
+   ``getLastStepHaltingNumber`` 并在训练循环中记录。
 """
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, Optional
+from pathlib import Path
+from typing import Dict, Iterable, Optional, Union
 
 import numpy as np
+import pandas as pd
 
-#: 汇总结果的标准字段顺序
+#: 汇总结果的标准字段
 METRIC_FIELDS = (
     "avg_wait",
     "avg_queue",
     "max_queue",
     "p95_wait",
+    "total_wait",
+    "mean_speed",
+    "duration",
     "n_samples",
 )
+
+#: SUMO-RL CSV 中我们用到的列
+_CSV_MEAN_WAIT = "system_mean_waiting_time"
+_CSV_STOPPED = "system_total_stopped"
+_CSV_ACC_WAIT = "t_accumulated_waiting_time"
+_CSV_AVG_SPEED = "t_average_speed"
+_CSV_STEP = "step"
+
+
+# --------------------------------------------------------------------------- #
+# 定位与读取
+# --------------------------------------------------------------------------- #
+def episode_csv_path(out_csv_name: Union[str, Path], episode: int = 0, conn: int = 0) -> Path:
+    """按 SUMO-RL 的命名规则构造 CSV 路径。"""
+    return Path(f"{out_csv_name}_conn{conn}_ep{episode}.csv")
+
+
+def find_episode_csv(out_csv_name: Union[str, Path], episode: int = 0) -> Path:
+    """在磁盘上查找某个 episode 的 CSV（容忍 conn 编号不同）。
+
+    Raises:
+        FileNotFoundError: 未找到匹配文件。
+    """
+    base = Path(out_csv_name)
+    pattern = f"{base.name}_conn*_ep{episode}.csv"
+    matches = sorted(base.parent.glob(pattern))
+    if not matches:
+        raise FileNotFoundError(
+            f"未找到 {base.parent / pattern}；"
+            "请确认构建环境时设置了 out_csv_name 并已调用 save_csv()。"
+        )
+    return matches[0]
+
+
+def load_episode_csv(path: Union[str, Path]) -> pd.DataFrame:
+    """读取一个 episode 的 CSV。"""
+    return pd.read_csv(path)
+
+
+# --------------------------------------------------------------------------- #
+# 汇总
+# --------------------------------------------------------------------------- #
+def _series(df: pd.DataFrame, column: str) -> Optional[pd.Series]:
+    if column not in df.columns:
+        return None
+    return pd.to_numeric(df[column], errors="coerce").dropna()
+
+
+def summarize_dataframe(df: pd.DataFrame) -> Dict[str, float]:
+    """把单个 episode 的逐步 CSV 汇总成指标字典。"""
+    waits = _series(df, _CSV_MEAN_WAIT)
+    stopped = _series(df, _CSV_STOPPED)
+    acc_wait = _series(df, _CSV_ACC_WAIT)
+    speed = _series(df, _CSV_AVG_SPEED)
+    step = _series(df, _CSV_STEP)
+
+    def _mean(s: Optional[pd.Series]) -> float:
+        return float(s.mean()) if s is not None and len(s) else float("nan")
+
+    return {
+        "avg_wait": _mean(waits),
+        "avg_queue": _mean(stopped),
+        "max_queue": float(stopped.max()) if stopped is not None and len(stopped) else float("nan"),
+        "p95_wait": float(np.percentile(waits, 95)) if waits is not None and len(waits) else float("nan"),
+        "total_wait": float(acc_wait.max()) if acc_wait is not None and len(acc_wait) else float("nan"),
+        "mean_speed": _mean(speed),
+        "duration": float(step.max()) if step is not None and len(step) else float("nan"),
+        "n_samples": float(len(df)),
+    }
 
 
 def summarize_episode(
     waiting_times: Iterable[float],
     queue_lengths: Iterable[float],
 ) -> Dict[str, float]:
-    """把单次 episode 的等待时间与队列长度汇总成指标字典。
-
-    Args:
-        waiting_times: 每辆车的等待时间（秒）。
-        queue_lengths: 逐步的队列长度采样（辆）。
-
-    Returns:
-        含 ``avg_wait`` / ``avg_queue`` / ``max_queue`` / ``p95_wait`` / ``n_samples``。
-        输入为空时对应字段返回 ``nan``（避免除零）。
-    """
+    """把逐车等待时间与逐步队列长度汇总成指标字典（不经 CSV 时使用）。"""
     waits = np.asarray(list(waiting_times), dtype=float)
     queues = np.asarray(list(queue_lengths), dtype=float)
 
-    summary: Dict[str, float] = {
+    return {
         "avg_wait": float(waits.mean()) if waits.size else float("nan"),
         "avg_queue": float(queues.mean()) if queues.size else float("nan"),
         "max_queue": float(queues.max()) if queues.size else float("nan"),
         "p95_wait": float(np.percentile(waits, 95)) if waits.size else float("nan"),
+        "total_wait": float(waits.sum()) if waits.size else float("nan"),
+        "mean_speed": float("nan"),
+        "duration": float("nan"),
         "n_samples": float(waits.size),
     }
-    return summary
 
 
+def load_and_summarize(path: Union[str, Path]) -> Dict[str, float]:
+    """读取 CSV 并直接返回指标字典（最常用的一步到位接口）。"""
+    return summarize_dataframe(load_episode_csv(path))
+
+
+# --------------------------------------------------------------------------- #
+# 跨种子汇总
+# --------------------------------------------------------------------------- #
 def aggregate_seeds(
     runs: Iterable[Dict[str, float]],
     fields: Optional[Iterable[str]] = None,
 ) -> Dict[str, Dict[str, float]]:
-    """跨随机种子汇总：返回每个字段的 ``mean`` / ``std``。
-
-    Args:
-        runs: 每个种子的指标字典（:func:`summarize_episode` 的输出）。
-        fields: 要汇总的字段；``None`` 表示使用 ``METRIC_FIELDS``。
-
-    Returns:
-        ``{field: {"mean": ..., "std": ...}}``；某字段全为 ``nan`` 时返回 ``nan``。
-    """
+    """跨随机种子汇总：返回每个字段的 ``mean`` / ``std`` / ``n``。"""
     runs = list(runs)
     keys = tuple(fields) if fields is not None else METRIC_FIELDS
     result: Dict[str, Dict[str, float]] = {}
 
     for key in keys:
         values = np.asarray([r.get(key, np.nan) for r in runs], dtype=float)
-        if values.size == 0 or np.all(np.isnan(values)):
-            result[key] = {"mean": float("nan"), "std": float("nan")}
+        valid = values[~np.isnan(values)]
+        if valid.size == 0:
+            result[key] = {"mean": float("nan"), "std": float("nan"), "n": 0}
         else:
             result[key] = {
-                "mean": float(np.nanmean(values)),
-                "std": float(np.nanstd(values)),
+                "mean": float(valid.mean()),
+                "std": float(valid.std(ddof=1)) if valid.size > 1 else 0.0,
+                "n": int(valid.size),
             }
     return result
 
 
-def load_episode_from_csv(path: str) -> Dict[str, float]:
-    """从 SUMO-RL 输出的 CSV 读取一个 episode 的指标。
-
-    .. note::
-       **待实现**：需先确认 CSV 的实际列名（如 ``system_mean_waiting_time``
-       等），再决定如何聚合。可先用 ``pandas.read_csv`` 打印列名核对。
-    """
-    raise NotImplementedError(
-        "load_episode_from_csv 待实现：请先用 pandas 打印 SUMO-RL 输出 CSV 的列名。"
-    )
-
-
-__all__ = ["METRIC_FIELDS", "summarize_episode", "aggregate_seeds", "load_episode_from_csv"]
+__all__ = [
+    "METRIC_FIELDS",
+    "episode_csv_path",
+    "find_episode_csv",
+    "load_episode_csv",
+    "load_and_summarize",
+    "summarize_dataframe",
+    "summarize_episode",
+    "aggregate_seeds",
+]

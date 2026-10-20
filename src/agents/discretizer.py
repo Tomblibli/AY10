@@ -18,9 +18,13 @@ from typing import Iterable, Sequence, Tuple
 
 import numpy as np
 
-#: 默认分箱边界（右开区间）：0 | 1-2 | 3-5 | 6-10 | >10
-DEFAULT_QUEUE_EDGES: Tuple[int, ...] = (1, 3, 6, 10)
-DEFAULT_DENSITY_EDGES: Tuple[int, ...] = (1, 3, 6, 10)
+#: 未归一化时的分箱边界（单位：车辆数）：0 | 1-2 | 3-5 | 6-10 | >10
+DEFAULT_QUEUE_EDGES: Tuple[float, ...] = (1, 3, 6, 10)
+DEFAULT_DENSITY_EDGES: Tuple[float, ...] = (1, 3, 6, 10)
+
+#: 观测已归一化到 [0, 1] 时使用的分箱边界
+#: （实测 SUMO-RL 的 observation_space 为 Box(0.0, 1.0, ...)，必须用这组）
+DEFAULT_NORMALIZED_EDGES: Tuple[float, ...] = (0.1, 0.3, 0.6, 0.9)
 
 
 class Discretizer:
@@ -29,8 +33,10 @@ class Discretizer:
     Args:
         n_phases: 绿灯相位个数（= 动作空间大小）。
         n_lanes: 受控进口车道数。
-        queue_edges: 排队长度分箱边界。
-        density_edges: 车辆数分箱边界。
+        queue_edges: 排队长度分箱边界；``None`` 时按 ``normalized`` 选默认值。
+        density_edges: 车辆数分箱边界；``None`` 时按 ``normalized`` 选默认值。
+        normalized: 观测是否已缩放到 ``[0, 1]``。**SUMO-RL 默认为 True**；
+            若使用未经归一化的原始计数，请传 ``False``。
 
     Example:
         >>> d = Discretizer.from_spaces(n_phases=4, obs_dim=4 + 1 + 2 * 12)
@@ -42,15 +48,23 @@ class Discretizer:
         self,
         n_phases: int,
         n_lanes: int,
-        queue_edges: Iterable[int] = DEFAULT_QUEUE_EDGES,
-        density_edges: Iterable[int] = DEFAULT_DENSITY_EDGES,
+        queue_edges: Iterable[float] | None = None,
+        density_edges: Iterable[float] | None = None,
+        normalized: bool = True,
     ) -> None:
         if n_phases <= 0 or n_lanes <= 0:
             raise ValueError("n_phases 与 n_lanes 必须为正整数")
+
+        self.normalized = bool(normalized)
+        if queue_edges is None:
+            queue_edges = DEFAULT_NORMALIZED_EDGES if self.normalized else DEFAULT_QUEUE_EDGES
+        if density_edges is None:
+            density_edges = DEFAULT_NORMALIZED_EDGES if self.normalized else DEFAULT_DENSITY_EDGES
+
         self.n_phases = int(n_phases)
         self.n_lanes = int(n_lanes)
-        self.queue_edges = tuple(sorted(int(e) for e in queue_edges))
-        self.density_edges = tuple(sorted(int(e) for e in density_edges))
+        self.queue_edges = tuple(sorted(float(e) for e in queue_edges))
+        self.density_edges = tuple(sorted(float(e) for e in density_edges))
 
     # ------------------------------------------------------------------ #
     # 构造辅助
@@ -61,7 +75,13 @@ class Discretizer:
         return self.n_phases + 1 + 2 * self.n_lanes
 
     @classmethod
-    def from_spaces(cls, n_phases: int, obs_dim: int, **kwargs) -> "Discretizer":
+    def from_spaces(
+        cls,
+        n_phases: int,
+        obs_dim: int,
+        normalized: bool = True,
+        **kwargs,
+    ) -> "Discretizer":
         """由 ``动作个数`` 与 ``观测维度`` 反推车道数。
 
         ``obs_dim = n_phases + 1 + 2 * n_lanes``  ⇒  ``n_lanes = (obs_dim - n_phases - 1) / 2``
@@ -77,7 +97,12 @@ class Discretizer:
                 "无法按 [phase_one_hot, min_green, density, queue] 解析。"
                 "请先打印真实观测核对布局。"
             )
-        return cls(n_phases=n_phases, n_lanes=rest // 2, **kwargs)
+        return cls(
+            n_phases=n_phases,
+            n_lanes=rest // 2,
+            normalized=normalized,
+            **kwargs,
+        )
 
     # ------------------------------------------------------------------ #
     # 映射
@@ -113,8 +138,13 @@ class Discretizer:
     def __repr__(self) -> str:  # pragma: no cover
         return (
             f"<Discretizer n_phases={self.n_phases}, n_lanes={self.n_lanes}, "
-            f"obs_dim={self.expected_dim}>"
+            f"obs_dim={self.expected_dim}, normalized={self.normalized}>"
         )
 
 
-__all__ = ["Discretizer", "DEFAULT_QUEUE_EDGES", "DEFAULT_DENSITY_EDGES"]
+__all__ = [
+    "Discretizer",
+    "DEFAULT_QUEUE_EDGES",
+    "DEFAULT_DENSITY_EDGES",
+    "DEFAULT_NORMALIZED_EDGES",
+]
