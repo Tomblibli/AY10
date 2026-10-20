@@ -12,6 +12,9 @@ AY10/
 ├── proposal/                       # 开题报告（LaTeX 源文件与 PDF）             ✅
 │   ├── proposal.tex                #   方案部分正文（XeLaTeX 编译）
 │   └── proposal.pdf                #   编译产物
+├── scripts/ 
+│   ├── check_env.py                # 检查配置环境
+│   └── demo_fixed_time.py          # 检查仿真环境
 ├── requirements.txt                # Python 依赖清单                          🚧
 ├── nets/                           # SUMO 路网、需求与信号配时                   🚧
 │   └── single-intersection/
