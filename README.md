@@ -113,29 +113,33 @@ python -m venv .venv
 # Windows (PowerShell)
 .venv\Scripts\activate
 
+# Linux / macOS
+source .venv/bin/activate
+```
 
 > 若 PowerShell 报"禁止运行脚本"，先执行：
 > `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`
-```
-安装依赖：
-务必在虚拟环境下执行：(.venv) PS E:\desktop_directory\desktop\AY10>
-```bash
-pip install -r .\requirements.txt
-```
 
-`sumo-rl` 会自动带入 `gymnasium`、`pettingzoo`、`traci`、`sumolib`、`pillow`。
-
-**阶段二（DQN）开始前**再安装：
+安装依赖（**务必在虚拟环境下执行**，提示符应带 `(.venv)`）：
 
 ```bash
-pip install "stable-baselines3[extra]>=2.0"
+pip install -r requirements.txt
 ```
+
+`sumo-rl` 会自动带入 `gymnasium`、`pettingzoo`、`traci`、`sumolib`、`pillow`；
+`pytest` 也已包含在内，装完即可运行测试。
+
+**阶段二（DQN）开始前**再启用：
+
+把 `requirements.txt` 末尾被注释的 `# stable-baselines3==2.3.2` 取消注释，然后重新执行
+`pip install -r requirements.txt`。不要改用 `[extra]` 版本 —— 它会额外拉入 opencv、pygame、autorom 等本项目用不到的包。
 
 ## 4. 验证安装
 
 ```bash
-python scripts/check.env.py #检查库环境
-python scripts/demo_fixed_time.py #检查仿真sumo是否正常运行
+python scripts/check_env.py          # 检查 SUMO / 依赖 / 仿真是否正常
+python scripts/demo_fixed_time.py    # 打开 sumo-gui 看固定配时的交通动画
+python -m pytest                     # 运行 tests/ 中的全部单元测试
 ```
 
 

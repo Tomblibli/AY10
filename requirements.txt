@@ -35,6 +35,8 @@ numpy==1.26.4
 pandas==2.2.3
 matplotlib==3.9.2
 pillow==10.4.0
+
+# ---- testing ----
 pytest==7.4.4
 
 # ---- SUMO python API (must match the installed SUMO release) ----
