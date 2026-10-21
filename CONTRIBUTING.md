@@ -30,8 +30,9 @@
 ## 环境
 
 ```bash
-pip install -r requirements-dev.txt
-python scripts/check_env.py        # 需要先装好 SUMO 并设置 SUMO_HOME
+pip install -r requirements.txt
+python scripts/check_env.py       
+python scripts/demo_fixed_time.py  
 ```
 
 详细步骤见 `README.md` 的「环境配置」一节。

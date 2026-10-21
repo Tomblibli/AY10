@@ -146,7 +146,7 @@ python scripts/demo_fixed_time.py #检查仿真sumo是否正常运行
 平时只需要一条命令：
 
 ```bash
-python -m pytest        # 57 个用例，约 3 秒，不需要 SUMO
+python -m pytest        # 运行tests/中的所有测试文件，57 个用例
 ```
 
 - 大家一起怎么干活（fork、提交、口头汇报）：见 `CONTRIBUTING.md`
