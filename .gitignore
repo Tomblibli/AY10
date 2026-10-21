@@ -6,9 +6,11 @@ __pycache__/
 .ipynb_checkpoints/
 
 # ---- 虚拟环境 ----
+# 注意：必须写成 /env/ 这种根锚定形式。
+# 若只写 env/，git 会在任意层级忽略同名目录，把 src/env/ 也一并排除掉。
 .venv/
 venv/
-env/
+/env/
 
 # ---- 实验结果与图表（可再生，不入库）----
 results/*.csv
